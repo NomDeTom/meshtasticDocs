@@ -8,19 +8,15 @@ date: 2026-03-14T09:00
 hide_table_of_contents: false
 ---
 
-Every growing mesh eventually meets the same villain... that one node that is just a little too enthusiastic.
+Every growing mesh eventually meets the same villain... that one node that is just a little *too* enthusiastic. Maybe it's stationary but *really really* wants you to know where it is. Maybe it is simply configured in a way that makes sense to one person, but not on a real shared mesh with real airtime limits. Maybe it's on firmware too old to take advantage of recent improvements in airtime preservation, but its still a key router location. Whatever the cause, one (or a few) noisy nodes can burn far more shared resources than it should.
 
-Maybe it is sending repeated position updates. Maybe it is flinging telemetry around like confetti. Maybe it is simply configured in a way that makes sense to one person, but not on a real shared mesh with real airtime limits. Whatever the cause, one (or a few) noisy nodes can burn far more shared resources than it should.
-
-Maybe there should be a way to handle this excess traffic in the mesh.
-
-Welcome to the new Traffic Management module.
+This is where the new Traffic Management module (TMM) is intended to help.
 
 {/* truncate */}
 
 ## TL;DR
 
-Traffic Management is the first server-side traffic shaping module for Meshtastic. It runs on intermediate nodes and inspects every passing packet, deduplicating positions, rate-limiting chatty nodes, caching NodeInfo responses, filtering undecryptable noise, and controlling hop propagation. Everything is opt-in and configurable to match the needs of each particular mesh or area.
+Traffic Management is the first server-side traffic shaping module for Meshtastic. It runs on intermediate nodes and inspects every passing packet, deduplicating positions, caching NodeInfo responses, and allowing node owners to rate-limit chatty nodes, more granular filtering of undecryptable packets, and controlling hop propagation where owners have not. Everything is opt-in and configurable to match the needs of each particular mesh or area.
 
 ## The Problem: Death by a Thousand Broadcasts
 
@@ -28,14 +24,14 @@ If you've operated a mesh with hundreds of nodes, you've probably seen it: chann
 
 Here's what's often going on under the hood:
 
-- **Duplicate positions everywhere.** A node sitting on a desk or roof broadcasts the same coordinates every few minutes. Multiply that by 50 nodes and that's a lot of airtime spent saying "yep, still right here."
+- **Duplicate positions everywhere.** A node sitting on a desk or roof broadcasts the same coordinates every hour (the default configured interval when activating the position interval. Multiply that by 50 nodes and that's a lot of airtime spent saying "yep, still right here."
 - **NodeInfo fan-out.** When a new node asks "who is node X?", that request ripples across the entire mesh. Every hop costs airtime, even if a nearby router already knows the answer.
-- **Rate-limit undecryptable noise.** Nodes on a different channel or encryption key generate packets your mesh node can't read but still faithfully relays. That's airtime you'll never get back.
+- **Rate-limit undecryptable packets.** Nodes on a different channel or encryption key generate packets your mesh node can't read but still faithfully relays. That's fine in theory, but as meshes get busier, private channels can weigh heavily.
 - **One bad apple.** A sensor node misconfigured to send telemetry every few seconds, or a node stuck in a reboot loop, can single-handedly push channel utilization through the roof (or the noise floor).
 
-Until now, traffic management in Meshtastic has been entirely client-side. We've made great progress asking client nodes to behave nicely: longer intervals, smaller payloads, smarter timing. And it works, when everyone cooperates. But one node that didn't get the memo or firmware update can undo all of that.
+Until now, general traffic management in Meshtastic has been entirely supply-side, at the individual node level. We've made great progress asking client nodes to behave nicely: longer intervals, smaller payloads, smarter timing. And it works, when everyone cooperates. But one node that didn't get the memo or hasn't had a firmware update since it was bought can undo all of that.
 
-Traffic Management flips the script. Instead of asking node owners nicely, the mesh can now enforce limits. Think of it as air traffic control for your mesh: keeping things flowing smoothly so every packet gets where it needs to go.
+The Traffic Management Module flips the script. Instead of asking node owners nicely, the mesh can now enforce limits. It has various levels and limits to allow a tailored approach without having to be heavy-handed or disrupt the vast majority of hink of it as air traffic control for your mesh: keeping things flowing smoothly so every packet gets where it needs to go.
 
 ## The Five Levers
 
