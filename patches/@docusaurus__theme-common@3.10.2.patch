@@ -1,0 +1,56 @@
+diff --git a/lib/utils/emojiUtils.js b/lib/utils/emojiUtils.js
+index 3c36f44bbe631385b68f7934016d24a9c1fea3b1..af521e637b310f103ddabb9b1790c5a339b6c9b2 100644
+--- a/lib/utils/emojiUtils.js
++++ b/lib/utils/emojiUtils.js
+@@ -4,7 +4,31 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  */
+-const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
++/*
++ * Fences a crash on pre-iOS 17 devices.
++ *
++ * The `v` (unicodeSets) flag reached Safari in 17, and \p{RGI_Emoji} is a
++ * property of strings, so it cannot be rewritten under `u`. The bundler
++ * downlevels the literal to a RegExp constructor call, which turns what
++ * would be a parse error into a runtime throw - "Invalid flags supplied to
++ * RegExp constructor" - blanking every page that renders a DocCard.
++ *
++ * Intl.Segmenter has the same shape of problem, from iOS 14.1.
++ *
++ * Both fall back to treating the label as having no leading emoji, which is
++ * what every label on this site does anyway.
++ */
++const segmenter = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
++    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
++    : null;
++let rgiEmoji;
++try {
++    rgiEmoji = new RegExp("^\\p{RGI_Emoji}$", "v");
++}
++catch {
++    // Single code points plus flag pairs: loses keycaps such as 1<VS16><keycap>.
++    rgiEmoji = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}{2})/u;
++}
+ /**
+  * This method splits "⚠️ Hello World" into "⚠️" + " Hello World".
+  * It is quite strict and dumb, only useful to handle best-effort heuristics.
+@@ -15,6 +39,9 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  * @param input
+  */
+ export function extractLeadingEmoji(input) {
++    if (!segmenter) {
++        return { emoji: null, rest: input };
++    }
+     const it = segmenter.segment(input)[Symbol.iterator]();
+     // const first = segmenter.segment(input).containing(0)?.segment;
+     const grapheme = it.next().value?.segment;
+@@ -25,7 +52,7 @@ export function extractLeadingEmoji(input) {
+     // Covers flags/ZWJ/skin tones, excludes digits
+     // See https://github.com/facebook/docusaurus/pull/12072
+     // eslint-disable-next-line
+-    if (!/^\p{RGI_Emoji}$/v.test(grapheme)) {
++    if (!rgiEmoji.test(grapheme)) {
+         return { emoji: null, rest: input };
+     }
+     return { emoji: grapheme, rest: input.slice(grapheme.length) };

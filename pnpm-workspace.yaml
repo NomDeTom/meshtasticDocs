@@ -19,4 +19,5 @@ allowBuilds:
   core-js-pure: false
 
 patchedDependencies:
+  '@docusaurus/theme-common@3.10.2': patches/@docusaurus__theme-common@3.10.2.patch
   docusaurus-plugin-glossary: patches/docusaurus-plugin-glossary.patch
