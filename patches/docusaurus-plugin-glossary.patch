@@ -180,10 +180,18 @@ index 289d45dbccad081e548d336df2c31745c4f3cdaa..6ddcf07a57705038ae9ecaed6e332d0b
            if (!/\w/.test(nextChar)) {
              isWordBoundary = true;
 diff --git a/dist/theme/GlossaryTerm/index.cjs b/dist/theme/GlossaryTerm/index.cjs
-index 88a801adfa97e7c74064ad8113f0cdb31d077b26..e02b4d44fb6f3d2f12754a5dcf2cb037774230b5 100644
+index 88a801adfa97e7c74064ad8113f0cdb31d077b26..ed286b316b6b6d507a79d5c0d96aa523439a64d8 100644
 --- a/dist/theme/GlossaryTerm/index.cjs
 +++ b/dist/theme/GlossaryTerm/index.cjs
-@@ -56,7 +56,9 @@ function GlossaryTerm({
+@@ -35,6 +35,7 @@ __export(GlossaryTerm_exports, {
+ module.exports = __toCommonJS(GlossaryTerm_exports);
+ var import_react = __toESM(require("react"), 1);
+ var import_useGlobalData = require("@docusaurus/useGlobalData");
++var import_useBaseUrl = __toESM(require("@docusaurus/useBaseUrl"), 1);
+ var import_styles = __toESM(require("../../styles.module-QQW7ISLV.module.css"), 1);
+ var import_jsx_runtime = require("react/jsx-runtime");
+ function GlossaryTerm({
+@@ -56,7 +57,9 @@ function GlossaryTerm({
      const viewportWidth = window.innerWidth;
      const viewportHeight = window.innerHeight;
      const preferredGap = 8;
@@ -194,7 +202,7 @@ index 88a801adfa97e7c74064ad8113f0cdb31d077b26..e02b4d44fb6f3d2f12754a5dcf2cb037
      const hasSpaceBelow = viewportHeight - wrapperRect.bottom >= tooltipRect.height + preferredGap;
      const nextPlacement = hasSpaceAbove || !hasSpaceBelow ? "top" : "bottom";
      let top;
-@@ -72,7 +74,7 @@ function GlossaryTerm({
+@@ -72,7 +75,7 @@ function GlossaryTerm({
        Math.min(left, viewportWidth - tooltipRect.width - horizontalMargin)
      );
      setPlacement(nextPlacement);
@@ -203,11 +211,43 @@ index 88a801adfa97e7c74064ad8113f0cdb31d077b26..e02b4d44fb6f3d2f12754a5dcf2cb037
    }, []);
    (0, import_react.useEffect)(() => {
      if (!showTooltip) return;
+@@ -122,13 +125,22 @@ function GlossaryTerm({
+     if (routePath && typeof routePath === "string" && routePath.length > 0) return routePath;
+     return pluginData && pluginData.routePath || "/glossary";
+   }, [pluginData, routePath]);
++  // A term with a `link` sends the click to its own page instead of the glossary entry.
++  const termLink = (0, import_react.useMemo)(() => {
++    const terms = pluginData && pluginData.terms || [];
++    const found = terms.find(
++      (t) => typeof t.term === "string" && t.term.toLowerCase() === String(term).toLowerCase()
++    );
++    return found && typeof found.link === "string" && found.link.length > 0 ? found.link : void 0;
++  }, [pluginData, term]);
++  const termLinkHref = (0, import_useBaseUrl.default)(termLink || "");
+   const displayText = children || term;
+   const termId = term.toLowerCase().replace(/\s+/g, "-");
+   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { ref: wrapperRef, className: import_styles.default.glossaryTermWrapper, children: [
+     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+       "a",
+       {
+-        href: `${effectiveRoutePath}#${termId}`,
++        href: termLink ? termLinkHref : `${effectiveRoutePath}#${termId}`,
+         className: import_styles.default.glossaryTerm,
+         onMouseEnter: () => setShowTooltip(true),
+         onMouseLeave: () => setShowTooltip(false),
 diff --git a/dist/theme/GlossaryTerm/index.js b/dist/theme/GlossaryTerm/index.js
-index 0eb7ea5e87d149d1165073c0179333e2ca3d1a38..9877bab80985cd1fd04ff882ce6f42af0ed16457 100644
+index 0eb7ea5e87d149d1165073c0179333e2ca3d1a38..2c546afc5f1f9c181fd443f00b494789a2ca5123 100644
 --- a/dist/theme/GlossaryTerm/index.js
 +++ b/dist/theme/GlossaryTerm/index.js
-@@ -22,7 +22,9 @@ function GlossaryTerm({
+@@ -1,6 +1,7 @@
+ // src/theme/GlossaryTerm/index.js
+ import React, { useMemo, useState, useRef, useEffect, useCallback } from "react";
+ import { usePluginData } from "@docusaurus/useGlobalData";
++import useBaseUrl from "@docusaurus/useBaseUrl";
+ import styles from "../../styles.module-QQW7ISLV.module.css";
+ import { jsx, jsxs } from "react/jsx-runtime";
+ function GlossaryTerm({
+@@ -22,7 +23,9 @@ function GlossaryTerm({
      const viewportWidth = window.innerWidth;
      const viewportHeight = window.innerHeight;
      const preferredGap = 8;
@@ -218,7 +258,7 @@ index 0eb7ea5e87d149d1165073c0179333e2ca3d1a38..9877bab80985cd1fd04ff882ce6f42af
      const hasSpaceBelow = viewportHeight - wrapperRect.bottom >= tooltipRect.height + preferredGap;
      const nextPlacement = hasSpaceAbove || !hasSpaceBelow ? "top" : "bottom";
      let top;
-@@ -38,7 +40,7 @@ function GlossaryTerm({
+@@ -38,7 +41,7 @@ function GlossaryTerm({
        Math.min(left, viewportWidth - tooltipRect.width - horizontalMargin)
      );
      setPlacement(nextPlacement);
@@ -227,3 +267,27 @@ index 0eb7ea5e87d149d1165073c0179333e2ca3d1a38..9877bab80985cd1fd04ff882ce6f42af
    }, []);
    useEffect(() => {
      if (!showTooltip) return;
+@@ -88,13 +91,22 @@ function GlossaryTerm({
+     if (routePath && typeof routePath === "string" && routePath.length > 0) return routePath;
+     return pluginData && pluginData.routePath || "/glossary";
+   }, [pluginData, routePath]);
++  // A term with a `link` sends the click to its own page instead of the glossary entry.
++  const termLink = useMemo(() => {
++    const terms = pluginData && pluginData.terms || [];
++    const found = terms.find(
++      (t) => typeof t.term === "string" && t.term.toLowerCase() === String(term).toLowerCase()
++    );
++    return found && typeof found.link === "string" && found.link.length > 0 ? found.link : void 0;
++  }, [pluginData, term]);
++  const termLinkHref = useBaseUrl(termLink || "");
+   const displayText = children || term;
+   const termId = term.toLowerCase().replace(/\s+/g, "-");
+   return /* @__PURE__ */ jsxs("span", { ref: wrapperRef, className: styles.glossaryTermWrapper, children: [
+     /* @__PURE__ */ jsx(
+       "a",
+       {
+-        href: `${effectiveRoutePath}#${termId}`,
++        href: termLink ? termLinkHref : `${effectiveRoutePath}#${termId}`,
+         className: styles.glossaryTerm,
+         onMouseEnter: () => setShowTooltip(true),
+         onMouseLeave: () => setShowTooltip(false),

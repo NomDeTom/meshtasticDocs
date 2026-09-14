@@ -219,7 +219,8 @@
       "term": "MUI",
       "abbreviation": "Meshtastic UI",
       "aliases": ["MeshtasticUI", "Meshtastic UI"],
-      "definition": "An on-device interface for interacting with the mesh and changing most basic settings without a phone client."
+      "definition": "An on-device interface for interacting with the mesh and changing most basic settings without a phone client.",
+      "link": "/docs/configuration/device-uis/meshtasticui/"
     },
     {
       "term": "NFC",
@@ -295,6 +296,7 @@
       "term": "Repeater",
       "autoLink": false,
       "definition": "Infrastructure node for extending network coverage by relaying messages with minimal overhead. Not visible in Nodes list.",
+      "link": "/docs/configuration/radio/device/#roles",
       "relatedTerms": ["Router"]
     },
     {
@@ -306,6 +308,7 @@
       "term": "Router",
       "autoLink": false,
       "definition": "Infrastructure node for extending network coverage by relaying messages. Visible in Nodes list.",
+      "link": "/docs/configuration/radio/device/#roles",
       "relatedTerms": ["Repeater"]
     },
     {

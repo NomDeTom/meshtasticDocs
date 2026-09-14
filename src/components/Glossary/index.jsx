@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import Link from "@docusaurus/Link";
 import { usePluginData } from "@docusaurus/useGlobalData";
 
 // Anchor ids must match the ones @theme/GlossaryTerm links to, so a tooltip
@@ -75,6 +76,14 @@ export default function Glossary() {
                     </dt>
                     <dd className="glossary__definition">
                       {t.definition}
+                      {t.link && (
+                        <>
+                          {" "}
+                          <Link className="glossary__link" to={t.link}>
+                            Read more
+                          </Link>
+                        </>
+                      )}
                       {t.relatedTerms?.length > 0 && (
                         <p className="glossary__related">
                           <strong>Related terms:</strong>{" "}
