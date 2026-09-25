@@ -52,42 +52,29 @@ Two guards run before any switch:
 
 If either fails the radio is **not** switched and the radio driver **drops** the packet, rather than letting it fall through onto the current configuration.
 
-### Encryption on an override channel
+### Encryption on a target channel
 
-Encryption keys off the **primary** channel slot, and the radio-thread channel switch happens *after* encryption. So when a beacon goes out on an override channel with a different name and PSK, the module installs the beacon channel into the primary slot for the synchronous duration of the send, then restores it. That guarantees the packet is encrypted with the beacon channel's key and stamped with its hash rather than the primary's. Meshtastic threading is cooperative, so nothing can preempt between swap and restore.
+A beacon packet carries its target's channel index in `MeshPacket.channel`, and is encrypted with that channel's key and stamped with its hash like any other packet. The primary slot is never modified. Only the RF settings - preset, region and slot - are switched for the transmission.
 
 ## Destinations
 
-A beacon's destinations come from one of two mutually exclusive sources, resolved into a single list before dispatch.
+`broadcast_targets` holds up to four destinations, each a preset, a region, a frequency slot and a `channel_index` into the channel table. With the list empty, one beacon is sent on the node's running preset and region over the primary channel. A target with no `channel_index` goes out on the primary channel, retuned to its own settings. `sanitiseConfig()` keeps any index as written; one the table does not hold is skipped at send, never moved to the primary.
 
-| | `broadcast_on_*` | `broadcast_targets` |
-| :--- | :--- | :--- |
-| Count | one | up to four |
-| Channel | `ChannelIdentity` - name and PSK | index into the channel table |
-| Written by | a remote administrator | a locally connected client |
+Targets are by index because the node must already hold a key to encrypt with. A remote administrator therefore reads the channel table (`get_channel_request` per slot) before writing targets; the firmware cannot tell a blind index from a deliberate one.
 
-The division is a consequence of visibility, not preference. A connected client can read the channel table and name a slot in it; a remote administrator over the mesh cannot enumerate it, so an index would resolve to something they could not predict and the channel must be stated by value.
+### The offer channel is upserted
 
-`sanitiseConfig()` is the gate. If a write carries both forms, the indexed list is kept and every `broadcast_on_*` field is cleared: an index cannot mutate the channel table and a by-value entry can, so an ambiguous message must not produce channel writes. The by-value target is then synthesised into the same single-entry shape the indexed path produces, so dispatch below has only one form to resolve.
+`broadcast_offer_channel` is by value, and is placed into the channel table when the config is written, so the node holds the channel it advertises. Matching is on name, PSK and `use_aead` together; a blank name resolves to the running preset's display name, the same rule `getName()` applies everywhere else, and an empty PSK is normalised to the one-byte `0` key first.
 
-With no destination configured at all, one beacon is sent on the node's running preset and region over the primary channel.
+Placement order: a live slot holding that identity is reused and nothing is written; otherwise a disabled slot is claimed as a `SECONDARY`, preferring one that previously held the same identity so a re-added channel recovers its old index; otherwise placement fails. A live channel is never evicted and the primary is never displaced. A licensed node refuses an encrypted offer channel. A write that claims a slot adds the channel table to the save set, and a local write sends its client an unsolicited `get_channel_response` for the slot.
 
-### By-value channels are upserted
-
-A channel named by value is placed into the channel table when the config is written, because the transmit path needs its key to encrypt. Matching is on name and PSK together; a blank name resolves to the running preset's display name, the same rule `getName()` applies everywhere else.
-
-Placement order: a live slot holding that identity is reused and nothing is written; otherwise a disabled slot is claimed, preferring one that previously held the same identity so a re-added channel recovers its old index; otherwise placement fails. A live channel is never evicted and the primary is never displaced. A write that claims a slot adds the channel table to the save set alongside the module config.
-
-Both by-value fields are withheld when placement fails - a channel named by value is in the table or it is not used - though for different reasons:
-
-- The **offer** is withheld and its `broadcast_offer_*` group cleared. An advertisement would travel fine without a local entry, but a node that cannot hold the channel it names cannot verify the invitation it is issuing.
-- The **target** is withheld, and its whole `broadcast_on_*` group is cleared. Without the key there is nothing to transmit with, and re-pointing it at the primary would beacon on a channel nobody named.
+When placement fails the offer is **withheld, not cleared**: the config keeps what the operator asked for, `offerIsPlaceable()` keeps it off the air while its channel is not live, and it stands again once the channel can be placed.
 
 ### Dispatch
 
 The broadcaster sends **one copy per entry**. Within a cycle, entries resolving to the same effective preset, region and channel are de-duplicated, so a repeated entry costs no extra airtime. Deduplication keys on resolved values, so an entry naming the current region explicitly collapses against one that leaves it `UNSET`.
 
-An indexed target whose `channel_index` is out of range or points at a disabled slot is **skipped** - that copy is not sent, and it is not redirected onto another channel. The configuration still asks for that channel, so provisioning it later brings the target back with no rewrite. Deleting a channel that a target names removes the target from the config instead; a by-value offer, carrying its own name and PSK, is unaffected by any channel-table edit.
+An indexed target whose `channel_index` is out of range or points at a disabled slot is **skipped** - that copy is not sent, and it is not redirected onto another channel. The configuration still asks for that channel, so provisioning it later brings the target back with no rewrite. A channel edit never removes anything: disabling a channel keeps the targets that name it, skipped, and withholds an offer on it, and the client is told what was withheld.
 
 ## Frequency slots
 
@@ -101,13 +88,13 @@ A pin that falls outside the resolved region's slot count is skipped rather than
 
 ### What the offer advertises
 
-`offer_frequency_slot` is populated **only when a receiver could not derive the same slot itself** from the advertised region, channel name and preset. A mesh on a region-mandated slot, or on the default name hash, spends no bytes on the field. A mesh that deliberately deviates sends it.
+`offer_frequency_slot` is populated **only when a receiver could not derive the same slot itself** from the advertised region, channel name and preset. A mesh on its region's default slot, or on the default name hash, spends no bytes on the field. A mesh that deliberately deviates sends it.
 
 An offer pinning a slot the advertised region does not hold is withheld whole - not advertised on a substitute slot, because a receiver that joined the derived slot would be on a different mesh from the one described. The offer stands again if a later region change makes the pin valid.
 
 ## Configuration size
 
-A `set_module_config` arriving **over the mesh** is measured before it is stored, and refused with `Routing.Error TOO_LARGE` if the encoded config plus its `ModuleConfig` and `AdminMessage` wrappers and the session passkey would exceed `DATA_PAYLOAD_LEN`, 233 bytes.
+A `set_module_config` arriving **over the mesh** is measured before it is stored, and refused with `Routing.Error TOO_LARGE` if the encoded config plus its `ModuleConfig` and `AdminMessage` wrappers and the session passkey would exceed 214 bytes - one LoRa frame less the header, PKC overhead and `Data` framing. The largest config the schema allows is 181 bytes, so the gate refuses nothing valid today; it guards future fields.
 
 The bound is about read-back, not the write. Such a config can be written; it is the `get_module_config_response` that truncates to an empty payload, which the remote client cannot distinguish from success. The measurement is taken with `pb_get_encoded_size()` on the actual message rather than from a table of field sizes, so adding a field cannot silently invalidate it.
 
@@ -137,6 +124,4 @@ The firmware deliberately does **not** unwrap a combined beacon's text into a sy
 
 ## The offered channel on the air
 
-`MeshBeacon.offer_channel` is a `ChannelIdentity` - name and PSK only. It carried a full `ChannelSettings` in 2.8.0; the tag numbers of the two messages match, so the change is wire compatible in both directions and no client needs updating to keep decoding beacons.
-
-The fields dropped from the air - `id`, `uplink_enabled`, `downlink_enabled`, `module_settings` - described the advertising node's own posture rather than anything a joiner needs, and removing them is what pays for the frequency-slot fields inside the payload ceiling.
+`MeshBeacon.offer_channel` is a `ChannelSettings`, of which the broadcaster fills only `name`, `psk` and `use_aead`. The rest - `id`, `uplink_enabled`, `downlink_enabled`, `module_settings` - describes the advertising node's own posture, not anything a joiner needs, and is sent zeroed. A cleartext channel goes out as the one-byte `0` key.

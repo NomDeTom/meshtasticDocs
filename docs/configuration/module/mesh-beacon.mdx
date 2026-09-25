@@ -46,15 +46,11 @@ Listening, broadcasting and legacy split are three separate options, but they sh
 | Setting                          | Acceptable Values                                      | Default |
 | :------------------------------- | :----------------------------------------------------- | :------ |
 | `broadcast_interval_secs`        | `3600` or greater (`0` = default)                      | `3600`  |
-| `broadcast_message`              | text, up to 100 characters                             | `""`    |
+| `broadcast_message`              | text, up to 60 bytes                                   | `""`    |
 | `broadcast_offer_channel`        | channel name and PSK                                   | unset   |
 | `broadcast_offer_preset`         | modem preset                                           | unset   |
 | `broadcast_offer_region`         | region code                                            | `UNSET` |
 | `broadcast_offer_frequency_slot` | 1-based slot number                                    | unset   |
-| `broadcast_on_channel`           | channel name and PSK                                   | unset   |
-| `broadcast_on_preset`            | modem preset                                           | unset   |
-| `broadcast_on_region`            | region code                                            | `UNSET` |
-| `broadcast_on_frequency_slot`    | 1-based slot number                                    | unset   |
 | `broadcast_targets`              | up to 4 target entries                                 | empty   |
 | `flags`                          | `1` listen, `2` broadcast, `4` legacy split (add them) | `0`     |
 
@@ -64,35 +60,31 @@ How often a beacon is transmitted. The floor is **3600 seconds (1 hour)**; `0` m
 
 ### broadcast_message
 
-The text carried in each broadcast, **capped at 100 characters** and truncated if longer.
+The text carried in each broadcast, **capped at 60 bytes** and truncated if longer. Letters outside ASCII take two to four bytes each, so the character limit is lower for them; a character that would straddle the limit is dropped whole.
 
 ### broadcast_offer_channel, broadcast_offer_preset, broadcast_offer_region, broadcast_offer_frequency_slot
 
 The **join offer** - what your beacon advertises. Together these say *"there is a reachable mesh on this region and preset, here is the channel to use."* Any subset may be set: a message with no offer is valid, and so is an offer with no message.
 
-The channel is given **by value** - its name and its PSK - not as a slot number from your channel table. Writing one adds it to your channel table if it isn't there already, so your node can also join the mesh it advertises. Nothing live is overwritten: an existing channel with the same name and PSK is reused, otherwise the first unused slot is claimed. If every slot is in use the offer is withheld: a channel named by value is in your channel table or it is not advertised, so you are never inviting people onto a channel your own node does not hold.
+The channel is given **by value** - its name and its PSK - not as a slot number from your channel table. Writing one adds it to your channel table if it isn't there already, so your node can also join the mesh it advertises. Nothing live is overwritten: an existing channel with the same name and PSK is reused, otherwise the first unused slot is claimed. If every slot is in use the offer is withheld: a channel named by value is in your channel table or it is not advertised, so you are never inviting people onto a channel your own node does not hold. The offer stays in your config and is advertised again once a slot is free.
+
+An empty PSK means no encryption, and is stored and advertised as the one-byte `0` key. When the write claims a slot, the connected app that made it is sent the new channel.
 
 An unknown region is cleared. A preset is cleared only if it is not a preset at all - one your region cannot run is kept, because the offer describes a mesh somewhere else.
 
-`broadcast_offer_frequency_slot` is for a mesh that sits on a **non-default frequency slot**. Leave it unset and listeners work the slot out for themselves from the region, channel name and preset, which is right for a region that mandates a slot and for any mesh on the default name hash. Set it only when your mesh deliberately deviates. Setting it to `0` is the same as leaving it unset.
+`broadcast_offer_frequency_slot` is for a mesh that sits on a **non-default frequency slot**. Leave it unset and listeners work the slot out for themselves from the region, channel name and preset, which is right for a mesh on its region's default slot or on the default name hash. Set it only when your mesh deliberately deviates. Setting it to `0` is the same as leaving it unset.
 
 **Note:** setting `broadcast_offer_channel` publishes that channel's PSK in the clear, to anyone in range. Leave it unset for a channel that is meant to stay private.
 
-### broadcast_on_channel, broadcast_on_preset, broadcast_on_region, broadcast_on_frequency_slot
-
-The radio settings your beacon is **transmitted on**, for a single destination. Leave them all unset and the beacon goes out on your node's current settings - a plain "message of the day" to whoever is already on your mesh. Set them and the radio is briefly switched to those settings for the transmission, then switched back, which is what lets you invite a mesh you are not on.
-
-As with the offer, the channel is named by value and is added to your channel table on write. Leave `broadcast_on_channel` unset while setting the region, preset or slot and the beacon goes out on your **primary channel**, retuned to those settings.
-
-These are **mutually exclusive with `broadcast_targets`**. See [One destination or several](#one-destination-or-several).
-
-**Note:** if you point these at a licensed-only (amateur) region and your node is not licensed, the beacon is dropped rather than sent - the firmware will not key up outside your licence.
-
 ### broadcast_targets
 
-A list of up to four destinations, for advertising to several meshes at once. One beacon is sent per entry.
+Where the beacon is transmitted: up to four destinations, one beacon per entry. Leave the list empty and one beacon goes out on your node's current settings and primary channel - a plain "message of the day" to whoever is already on your mesh.
 
-Each entry names a preset, a region, an optional frequency slot, and a **channel slot from your own channel table** - so that channel has to exist on your node first, because your node needs its key to encrypt the beacon. Configure the channels, then write the beacon settings pointing at their slot numbers. Duplicate entries cost no extra airtime; they are skipped.
+Each entry names a preset, a region, an optional frequency slot, and a **channel slot from your own channel table** (`channel_index`) - so that channel has to exist on your node first, because your node needs its key to encrypt the beacon. Configure the channels, then write the beacon settings pointing at their slot numbers. Duplicate entries cost no extra airtime; they are skipped. For each transmission the radio is briefly switched to the entry's settings, then switched back, which is what lets you invite a mesh you are not on.
+
+Leave `channel_index` unset and that entry goes out on your **primary channel**, retuned to the entry's preset, region and slot.
+
+**Note:** if an entry points at a licensed-only (amateur) region and your node is not licensed, that beacon is dropped rather than sent - the firmware will not key up outside your licence.
 
 **Note:** an entry pointing at a slot you have not configured, or one you have since deleted, is **skipped** - that beacon is simply not sent. It is not redirected to another channel, because broadcasting on a channel nobody asked for is worse than not broadcasting. The entry stays in your config, so re-creating the channel brings it back.
 
@@ -119,28 +111,11 @@ So the value to set is just the total:
 
 ## Details
 
-### One destination or several
-
-There are two ways to say where a beacon is transmitted, and a node uses one or the other, never both.
-
-| | `broadcast_on_*` | `broadcast_targets` |
-| :--- | :--- | :--- |
-| Destinations | one | up to four |
-| Names its channel | by value - name and PSK | by index into your channel table |
-| Channel must exist first | no, it is added for you | yes |
-| Suited to | configuring over the mesh, remotely | configuring from a connected app |
-
-The split follows what the configuring client can see. An app connected over Bluetooth can read your channel table, so it can point at a slot. An administrator reaching your node **over the mesh** cannot read it, so an index would mean nothing to them and the channel has to be stated outright.
-
-If a single write somehow contains both, the indexed list wins and the `broadcast_on_*` fields are cleared. Writing one form replaces the other.
-
-Independently of that choice, leaving the radio settings unset beacons on your own current mesh, and setting them reaches a different one. A target list can mix one entry on your current settings with others on different presets and regions.
-
 ### Configuring over the mesh
 
-A beacon can be configured by remote administration, but the whole configuration has to fit in one LoRa packet - 233 bytes - so that it can be read back afterwards. A write that is too large is **rejected** with an error rather than half-stored, because a configuration the administrator can never read back is worse than none.
+A beacon can be configured by remote administration. The whole configuration travels in one packet, and has to fit in one LoRa frame - 214 bytes for the admin message - so that it can be read back afterwards. A write that is too large is **rejected** with an error rather than half-stored, because a configuration the administrator can never read back is worse than none. The largest configuration the settings allow fits: four targets, an offer with a 256-bit key, and a full 60-byte message.
 
-In practice a single by-value destination fits comfortably, including a 128-bit key. What does not fit is naming *both* the offered channel and the transmit channel with full 256-bit keys and a long message. If you need that, configure the node from a connected app instead, where the limit is far higher.
+Targets name channels by slot number, and a slot number is only meaningful to someone who has seen the node's channel table. Before writing targets over the mesh, **read the node's channels** (one request per slot) and use the slot that holds the channel you mean. A slot number written blind can land on a different channel than intended; or leave `channel_index` unset, and the beacon goes out on the node's primary channel.
 
 ### Legacy split
 
@@ -184,10 +159,10 @@ broadcast_targets = [
 ]
 ```
 
-The node transmits nothing on its own LongFast mesh here: the single target moves the radio to EU_866 and LiteFast for the transmission, then puts it back. No frequency slot is offered because none is needed — EU_N_868 mandates slot 1, so every listener derives the same answer.
+The node transmits nothing on its own LongFast mesh here: the single target moves the radio to EU_866 and LiteFast for the transmission, then puts it back. No frequency slot is offered because none is needed — EU_N_868 puts every mesh on slot 1 of its three unless told otherwise, so every listener derives the same answer.
 
 :::note
-An offer carries a **channel name and PSK, a region, a modem preset and a frequency slot** — and nothing else. Position precision, MQTT uplink, mute state, hop limits and every other setting are outside it, because the advertised channel travels as a `ChannelIdentity`, which holds only what is needed to join. Anything further has to be words in the 100-character message, for the user to apply by hand.
+An offer carries a **channel name and PSK, a region, a modem preset and a frequency slot** — and nothing else. Position precision, MQTT uplink, mute state, hop limits and every other setting are outside it, because only the channel's name, PSK and encryption mode are sent - what is needed to join. Anything further has to be words in the 60-byte message, for the user to apply by hand.
 :::
 
 ## Examples
@@ -207,20 +182,7 @@ broadcast_targets = [
 ]
 ```
 
-The same beacon set up over the mesh, where the transmit channel has to be named by value:
-
-```text
-flags                       = 6
-broadcast_message           = "Join us on NarrowSlow!"
-broadcast_offer_channel     = { name: "MyChannel", psk: <the channel's key> }
-broadcast_offer_preset      = NARROW_SLOW
-broadcast_offer_region      = EU_N_868
-broadcast_on_channel        = { name: "LongFast", psk: <the channel's key> }
-broadcast_on_preset         = LONG_FAST
-broadcast_on_region         = EU_868
-```
-
-Both channels are added to the node's channel table by the write itself.
+The same beacon written over the mesh is the same configuration, with the two slot numbers read from the remote node's channel table first. The offered channel is added to that node's channel table by the write itself.
 
 The same settings can be baked in at build time through `userPrefs.jsonc`, including per-target entries.
 
@@ -260,7 +222,7 @@ Available under **Settings → Module Config → Mesh Beacon**, with received in
 
 ### Apple
 
-Not yet implemented.
+Available under **Settings → Module Configuration → Mesh Beacon**, with received beacons shown in Discovery. Targets and the offered channel are chosen from the channel list of the directly connected node; the app does not read a remote node's channel table, so target slot numbers cannot be checked for a node administered over the mesh.
 
 </TabItem>
 
