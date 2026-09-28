@@ -33,6 +33,9 @@ const config = {
   organizationName: "meshtastic",
   projectName: "meshtastic",
   themeConfig: /** @type {import('@docusaurus/preset-classic').ThemeConfig} */ {
+    // Default social preview for every page. Docusaurus resolves this against
+    // `url` above, so the emitted og:image is absolute, which Open Graph requires.
+    image: "design/web/social-preview-1200x630.png",
     respectPrefersColorScheme: true,
     docs: {
       sidebar: {
@@ -222,6 +225,9 @@ const config = {
     },
   },
   themes: ["@docusaurus/theme-mermaid"],
+  // Opens the owning tab before scrolling, so table-of-contents links to a
+  // heading inside a closed <TabItem> work. See the file for why.
+  clientModules: [require.resolve("./src/clientModules/tabAnchors.js")],
   future: {
     faster: true,
     v4: {
