@@ -1,0 +1,96 @@
+name: Meshtastic docs ZIM
+
+# Builds the Meshtastic documentation (meshtastic/meshtastic, Docusaurus) into a Kiwix ZIM
+# for offline reading, with NomDeTom/docusaurus2zim's build.sh and its
+# examples/meshtastic.json: current docs only, device images mirrored in, relative book.
+#
+# This branch holds only this workflow, so pushing to it runs nothing of upstream's. The
+# docs source is checked out from meshtastic/meshtastic at DOCS_REF.
+on:
+  push:
+    branches: [zim-build]
+  workflow_dispatch:
+    inputs:
+      docs_ref:
+        description: meshtastic/meshtastic branch, tag or commit to build
+        default: master
+      d2z_mode:
+        description: 'docusaurus2zim packaging: auto, pip, or image (to test the fallback)'
+        default: auto
+      publish:
+        description: Attach the ZIM to a release in this repo (tag meshtastic-docs-<date>-<commit>)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-zim
+  cancel-in-progress: true
+
+env:
+  DOCS_REF: ${{ inputs.docs_ref || 'master' }}
+
+jobs:
+  zim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out the docs at ${{ env.DOCS_REF }}
+        uses: actions/checkout@v7
+        with:
+          repository: meshtastic/meshtastic
+          ref: ${{ env.DOCS_REF }}
+          path: site
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: site/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: site/.nvmrc
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+
+      - name: docusaurus2zim (pip, else its packaging image)
+        id: d2z
+        uses: NomDeTom/docusaurus2zim@main
+        with:
+          mode: ${{ inputs.d2z_mode || 'auto' }}
+
+      - name: Install the docs site
+        working-directory: site
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and package
+        working-directory: site
+        env:
+          DOCUSAURUS2ZIM_CONFIG: ${{ env.D2Z_HOME }}/examples/meshtastic.json
+        run: |
+          # --no-docker: packaging goes through DOCUSAURUS2ZIM_PYTHON, which the action set to
+          # a local python or to python inside its image.
+          "$D2Z_HOME/build.sh" --no-docker --heap 8192 --zim-dir "$GITHUB_WORKSPACE/out"
+          ls -la "$GITHUB_WORKSPACE/out"
+          test -s "$GITHUB_WORKSPACE/out/meshtastic-docs.zim"
+          echo "packaged with ${{ steps.d2z.outputs.mode }}"
+          echo "VERSION=$(date -u +%Y-%m-%d)-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: meshtastic-docs-${{ env.VERSION }}
+          path: out/meshtastic-docs.zim
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Publish a release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="meshtastic-docs-${VERSION}"
+          notes="Meshtastic docs (meshtastic/meshtastic ${DOCS_REF}, ${VERSION}) as a relative Kiwix book. Install on an Irate-Box hub with: sudo ./install.sh --zim <this asset's URL>"
+          gh release create "$tag" out/meshtastic-docs.zim --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Meshtastic docs ZIM (${VERSION})" --notes "$notes" ||
+            gh release upload "$tag" out/meshtastic-docs.zim --repo "$GITHUB_REPOSITORY" --clobber
