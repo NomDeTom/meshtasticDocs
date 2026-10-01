@@ -56,7 +56,7 @@ jobs:
 
       - name: docusaurus2zim (pip, else its packaging image)
         id: d2z
-        uses: NomDeTom/docusaurus2zim@action
+        uses: NomDeTom/docusaurus2zim@main
         with:
           mode: ${{ inputs.d2z_mode || 'auto' }}
 
