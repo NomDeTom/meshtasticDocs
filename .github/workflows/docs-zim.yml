@@ -14,6 +14,9 @@ on:
       docs_ref:
         description: meshtastic/meshtastic branch, tag or commit to build
         default: master
+      d2z_mode:
+        description: 'docusaurus2zim packaging: auto, pip, or image (to test the fallback)'
+        default: auto
       publish:
         description: Attach the ZIM to a release in this repo (tag meshtastic-docs-<date>-<commit>)
         type: boolean
@@ -35,37 +38,27 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Check out the docs at ${{ env.DOCS_REF }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: meshtastic/meshtastic
           ref: ${{ env.DOCS_REF }}
           path: site
 
-      - name: Check out docusaurus2zim
-        uses: actions/checkout@v4
-        with:
-          repository: NomDeTom/docusaurus2zim
-          path: d2z
-
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: site/package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: site/.nvmrc
           cache: pnpm
           cache-dependency-path: site/pnpm-lock.yaml
 
-      - uses: actions/setup-python@v5
+      - name: docusaurus2zim (pip, else its packaging image)
+        id: d2z
+        uses: NomDeTom/docusaurus2zim@action
         with:
-          python-version: '3.14'
-
-      - name: Packaging dependencies (zimscraperlib, libmagic, libcairo)
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends libmagic1 libcairo2
-          pip install -q -r d2z/requirements.txt
+          mode: ${{ inputs.d2z_mode || 'auto' }}
 
       - name: Install the docs site
         working-directory: site
@@ -74,17 +67,22 @@ jobs:
       - name: Build and package
         working-directory: site
         env:
-          DOCUSAURUS2ZIM_CONFIG: ${{ github.workspace }}/d2z/examples/meshtastic.json
+          DOCUSAURUS2ZIM_CONFIG: ${{ env.D2Z_HOME }}/examples/meshtastic.json
         run: |
-          "$GITHUB_WORKSPACE/d2z/build.sh" --no-docker --heap 8192 --zim-dir "$GITHUB_WORKSPACE/out"
+          # --no-docker: packaging goes through DOCUSAURUS2ZIM_PYTHON, which the action set to
+          # a local python or to python inside its image.
+          "$D2Z_HOME/build.sh" --no-docker --heap 8192 --zim-dir "$GITHUB_WORKSPACE/out"
           ls -la "$GITHUB_WORKSPACE/out"
+          test -s "$GITHUB_WORKSPACE/out/meshtastic-docs.zim"
+          echo "packaged with ${{ steps.d2z.outputs.mode }}"
           echo "VERSION=$(date -u +%Y-%m-%d)-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: meshtastic-docs-${{ env.VERSION }}
           path: out/meshtastic-docs.zim
           compression-level: 0
+          if-no-files-found: error
 
       - name: Publish a release
         if: ${{ inputs.publish }}
